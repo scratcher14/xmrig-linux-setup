@@ -40,7 +40,7 @@ Optimized XMRig setup script for Linux desktop CPU mining. Supports RandomX (Mon
 
 ```bash
 # Download the setup script
-wget https://raw.githubusercontent.com/YOUR-USERNAME/YOUR-REPO/main/xmrig-linux-setup.sh
+wget https://raw.githubusercontent.com/scratcher14/linux-cpu-mining
 
 # Make it executable
 chmod +x xmrig-linux-setup.sh
