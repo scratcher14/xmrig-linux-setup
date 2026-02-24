@@ -40,7 +40,7 @@ Optimized XMRig setup script for Linux desktop CPU mining. Supports RandomX (Mon
 
 ```bash
 # Download the setup script
-wget https://raw.githubusercontent.com/scratcher14/xmrig-linux-setup/main/xmrig-linux-setup.sh 
+wget https://raw.githubusercontent.com/scratcher14/xmrig-linux-setup/main/xmrig-linux-setup.sh
 
 # Make it executable
 chmod +x xmrig-linux-setup.sh
@@ -49,13 +49,128 @@ chmod +x xmrig-linux-setup.sh
 ./xmrig-linux-setup.sh
 ```
 
+**Or use the one-liner (easiest):**
+```bash
+bash <(curl -s https://raw.githubusercontent.com/scratcher14/xmrig-linux-setup/main/xmrig-linux-setup.sh)
+```
+
 The script will:
-1. Install dependencies
-2. Clone and compile XMRig
-3. Configure huge pages (optional but recommended)
-4. Enable MSR mod (optional, for extra performance)
-5. Guide you through pool/wallet configuration
-6. Create helper scripts and systemd service
+1. **Check dependencies** - Automatically detect and install missing packages
+2. **Clone and compile XMRig** - Attempts static build, falls back to dynamic if needed
+3. **Configure huge pages** - Optional ~15-20% performance boost
+4. **Enable MSR mod** - Optional ~5-10% additional boost
+5. **Guide you through configuration** - Algorithm, pool, wallet, worker setup
+6. **Create helper scripts** - start.sh, reconfigure.sh, info.sh, systemd service
+
+### Understanding Setup Options
+
+During setup, you'll be asked about performance optimizations. Here's what each one does:
+
+#### Huge Pages (15-20% boost for RandomX)
+
+**What are huge pages?**
+- Standard memory uses 4KB pages
+- Huge pages use 2MB pages (500x larger)
+- Reduces memory management overhead for RandomX mining
+
+**What the script does:**
+- Analyzes your CPU threads
+- Calculates required memory (e.g., 16 threads = 10,240 pages = ~20GB)
+- Configures system permanently in `/etc/sysctl.conf`
+
+**Impact on your system:**
+- ✅ Doesn't lock memory away from other apps
+- ✅ Safe for both dedicated miners and multi-use systems  
+- ✅ Can be reverted by editing `/etc/sysctl.conf`
+- ✅ No performance penalty for other applications
+
+**Recommendation:**
+- **YES for all users** - Significant boost with no downside
+
+---
+
+#### MSR Mod (5-10% additional boost for RandomX)
+
+**What is MSR mod?**
+- MSR = Model-Specific Register (CPU hardware registers)
+- Optimizes CPU cache settings specifically for RandomX
+- Loads kernel module and gives XMRig permission to tweak CPU
+
+**What the script does:**
+- Loads `msr` kernel module
+- Configures it to load on boot
+- Grants XMRig capability to write CPU registers (`cap_sys_rawio`)
+
+**Impact on your system:**
+- ✅ Only affects mining performance, not other tasks
+- ✅ XMRig optimizes cache once on startup
+- ✅ Can be disabled by removing setcap permission
+- ⚠️ Requires root/sudo access
+
+**Recommendation:**
+- **YES for dedicated mining rigs** - Maximum performance
+- **YES for part-time miners** - Generally safe, significant boost
+- **MAYBE for laptops** - Safe but consider thermal headroom
+
+---
+
+#### Thread Configuration
+
+The script detects your CPU and shows recommendations:
+
+**What it shows you:**
+- CPU model detected (e.g., "AMD Ryzen 7 5800X")
+- Total available threads (e.g., 16)
+- What auto-detection will likely select
+- Recommendations based on use case
+
+**Configuration options:**
+
+| Use Case | Threads | Example (16-thread CPU) | Why? |
+|----------|---------|------------------------|------|
+| **Dedicated miner** | Auto or All | Press Enter or type 16 | Maximum hashrate |
+| **Desktop (light use)** | All - 2 | Type 14 | Keeps system responsive |
+| **Gaming PC** | All - 4 | Type 12 | Headroom for games |
+| **Laptop** | 50-75% | Type 8-12 | Thermal management |
+
+**Auto-detection (recommended):**
+- XMRig tests different configurations on first run
+- Selects optimal thread count and CPU affinity
+- Usually picks all threads for dedicated systems
+- Press Enter to use auto
+
+---
+
+#### Build Type (Handled Automatically)
+
+The script tries two build methods:
+
+**Static Build (preferred):**
+- Single binary with all dependencies included
+- Portable to other systems
+- Slightly better performance
+
+**Dynamic Build (fallback):**
+- Requires libraries installed on system
+- Used if static libraries unavailable
+- Works perfectly for local mining
+
+The script automatically falls back to dynamic if static fails - both work equally well for mining.
+
+---
+
+### Important Notes
+
+**XMRig is CPU-only:**
+- RandomX (Monero) is designed specifically for CPUs
+- ASIC and GPU resistant by design
+- GPUs provide no advantage for RandomX mining
+
+**Supported distributions:**
+- Ubuntu, Debian, Linux Mint, Pop!_OS, Elementary OS
+- Fedora, RHEL, CentOS, Rocky Linux, AlmaLinux  
+- Arch, Manjaro, EndeavourOS
+- Script auto-detects and uses correct package manager
 
 ### 2. Start Mining
 
