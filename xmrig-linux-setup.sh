@@ -32,22 +32,102 @@ else
     OS="Unknown"
 fi
 
-# Step 1: Install dependencies
+# Step 1: Check and install dependencies
 echo ""
-echo "[1/7] Installing build dependencies..."
+echo "[1/7] Checking and installing build dependencies..."
 echo ""
 
-if [[ "$OS" == *"Ubuntu"* ]] || [[ "$OS" == *"Debian"* ]]; then
-    sudo apt update
-    sudo apt install -y git build-essential cmake libuv1-dev libssl-dev libhwloc-dev
-elif [[ "$OS" == *"Fedora"* ]] || [[ "$OS" == *"Red Hat"* ]] || [[ "$OS" == *"CentOS"* ]]; then
-    sudo dnf install -y git gcc gcc-c++ cmake libuv-devel openssl-devel hwloc-devel
-elif [[ "$OS" == *"Arch"* ]] || [[ "$OS" == *"Manjaro"* ]]; then
-    sudo pacman -S --noconfirm git base-devel cmake libuv openssl hwloc
+# Function to check if a command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Check for required dependencies
+MISSING_DEPS=false
+echo "Checking for required packages..."
+
+if ! command_exists git; then
+    echo "  ✗ git - MISSING"
+    MISSING_DEPS=true
 else
-    echo "⚠️  Unknown distribution. Please install manually:"
-    echo "  git, build-essential/base-devel, cmake, libuv, openssl, hwloc"
-    read -p "Press Enter when dependencies are installed..."
+    echo "  ✓ git - installed"
+fi
+
+if ! command_exists cmake; then
+    echo "  ✗ cmake - MISSING"
+    MISSING_DEPS=true
+else
+    echo "  ✓ cmake - installed"
+fi
+
+if ! command_exists make; then
+    echo "  ✗ make - MISSING"
+    MISSING_DEPS=true
+else
+    echo "  ✓ make - installed"
+fi
+
+if ! command_exists gcc; then
+    echo "  ✗ gcc - MISSING"
+    MISSING_DEPS=true
+else
+    echo "  ✓ gcc - installed"
+fi
+
+# Auto-install missing dependencies based on distribution
+if [ "$MISSING_DEPS" = true ]; then
+    echo ""
+    echo "Missing dependencies detected. Installing automatically..."
+    echo ""
+    
+    if [[ "$OS" == *"Ubuntu"* ]] || [[ "$OS" == *"Debian"* ]] || [[ "$OS" == *"Linux Mint"* ]] || [[ "$OS" == *"Pop!_OS"* ]] || [[ "$OS" == *"Elementary"* ]]; then
+        echo "Using apt package manager (Debian/Ubuntu-based)..."
+        sudo apt update
+        sudo apt install -y git build-essential cmake libuv1-dev libssl-dev libhwloc-dev
+        
+        # Ask if user wants static libraries for better portability
+        echo ""
+        read -p "Install static libraries for portable build? (Recommended: y/n): " INSTALL_STATIC
+        if [[ "$INSTALL_STATIC" =~ ^[Yy]$ ]]; then
+            echo "Installing static libraries..."
+            sudo apt install -y libhwloc-dev:native || sudo apt install -y libhwloc-dev
+        fi
+    elif [[ "$OS" == *"Fedora"* ]] || [[ "$OS" == *"Red Hat"* ]] || [[ "$OS" == *"CentOS"* ]] || [[ "$OS" == *"Rocky"* ]] || [[ "$OS" == *"AlmaLinux"* ]]; then
+        echo "Using dnf package manager (Red Hat-based)..."
+        sudo dnf install -y git gcc gcc-c++ cmake libuv-devel openssl-devel hwloc-devel
+    elif [[ "$OS" == *"Arch"* ]] || [[ "$OS" == *"Manjaro"* ]] || [[ "$OS" == *"EndeavourOS"* ]]; then
+        echo "Using pacman package manager (Arch-based)..."
+        sudo pacman -S --noconfirm git base-devel cmake libuv openssl hwloc
+    else
+        echo "⚠️  Unable to auto-detect package manager for: $OS"
+        echo ""
+        echo "Please install these packages manually:"
+        echo ""
+        echo "For Ubuntu/Debian/Mint:"
+        echo "  sudo apt update"
+        echo "  sudo apt install -y git build-essential cmake libuv1-dev libssl-dev libhwloc-dev"
+        echo ""
+        echo "For Fedora/RHEL/CentOS:"
+        echo "  sudo dnf install -y git gcc gcc-c++ cmake libuv-devel openssl-devel hwloc-devel"
+        echo ""
+        echo "For Arch/Manjaro:"
+        echo "  sudo pacman -S --noconfirm git base-devel cmake libuv openssl hwloc"
+        echo ""
+        read -p "Press Enter after installing dependencies to continue..."
+    fi
+    
+    # Verify dependencies were installed
+    echo ""
+    echo "Verifying installation..."
+    if ! command_exists git || ! command_exists cmake || ! command_exists make || ! command_exists gcc; then
+        echo ""
+        echo "✗ Some dependencies are still missing. Please install them manually and run this script again."
+        exit 1
+    fi
+    echo "✓ All dependencies installed successfully!"
+else
+    echo ""
+    echo "✓ All required dependencies are already installed!"
 fi
 
 # Step 2: Clone XMRig
@@ -70,14 +150,53 @@ echo "[3/7] Compiling XMRig with optimizations..."
 echo "This will take 5-15 minutes depending on your CPU..."
 echo ""
 
-# Build with maximum optimizations
+# Try static build first, fall back to dynamic if it fails
+echo "Attempting static build..."
 cmake .. -DXMRIG_DEPS=scripts/deps -DBUILD_STATIC=ON
-make -j$(nproc)
+
+if make -j$(nproc); then
+    if [ -f "xmrig" ]; then
+        echo ""
+        echo "✓ Static build successful!"
+        BUILD_TYPE="static"
+    else
+        STATIC_FAILED=true
+    fi
+else
+    STATIC_FAILED=true
+fi
+
+if [ "$STATIC_FAILED" = true ]; then
+    echo ""
+    echo "⚠️  Static build failed (usually due to missing static libraries)"
+    echo "Attempting dynamic build instead..."
+    echo ""
+    
+    # Clean build directory
+    cd ..
+    rm -rf build
+    mkdir build
+    cd build
+    
+    # Build dynamically (no static flag)
+    cmake ..
+    make -j$(nproc)
+    
+    if [ ! -f "xmrig" ]; then
+        echo ""
+        echo "✗ Build failed. Check errors above."
+        exit 1
+    fi
+    
+    echo ""
+    echo "✓ Dynamic build successful!"
+    BUILD_TYPE="dynamic"
+fi
 
 # Check if build was successful
 if [ -f "xmrig" ]; then
     echo ""
-    echo "✓ Build successful!"
+    echo "✓ Build successful! ($BUILD_TYPE)"
 else
     echo ""
     echo "✗ Build failed. Check errors above."
@@ -88,21 +207,37 @@ fi
 echo ""
 echo "[4/7] Configuring system for optimal performance..."
 echo ""
+echo "========================================="
+echo "  Huge Pages Configuration"
+echo "========================================="
+echo ""
 
-read -p "Enable huge pages for ~15-20% performance boost? (y/n): " ENABLE_HUGEPAGES
+# Get CPU info
+CPU_THREADS=$(nproc)
+REQUIRED_PAGES=$((CPU_THREADS * 1280))
+REQUIRED_MB=$((REQUIRED_PAGES * 2))
+
+echo "System Analysis:"
+echo "  CPU Threads: $CPU_THREADS"
+echo "  Required huge pages: $REQUIRED_PAGES (${REQUIRED_MB}MB)"
+echo "  Performance boost: ~15-20% for RandomX"
+echo ""
+echo "What are huge pages?"
+echo "  Huge pages use 2MB memory blocks instead of standard 4KB."
+echo "  This reduces memory overhead and speeds up RandomX mining."
+echo "  Your system will allocate ~${REQUIRED_MB}MB for mining."
+echo ""
+echo "Impact on your system:"
+echo "  ✓ Doesn't lock memory away from other apps"
+echo "  ✓ Safe for both dedicated and multi-use systems"
+echo "  ✓ Can be reverted by editing /etc/sysctl.conf"
+echo ""
+
+read -p "Enable huge pages? (y/n): " ENABLE_HUGEPAGES
 
 if [[ "$ENABLE_HUGEPAGES" =~ ^[Yy]$ ]]; then
     echo ""
-    echo "Calculating required huge pages..."
-    
-    # Get CPU info
-    CPU_THREADS=$(nproc)
-    # RandomX needs ~2.5GB per thread, round up
-    REQUIRED_PAGES=$((CPU_THREADS * 1280))
-    
-    echo "Detected $CPU_THREADS CPU threads"
-    echo "Recommended huge pages: $REQUIRED_PAGES"
-    echo ""
+    echo "Configuring $REQUIRED_PAGES huge pages..."
     
     # Set huge pages temporarily
     sudo sysctl -w vm.nr_hugepages=$REQUIRED_PAGES
@@ -121,7 +256,27 @@ fi
 
 # Step 5: MSR mod for RandomX (advanced users)
 echo ""
-read -p "Enable MSR mod for additional RandomX performance? (requires root) (y/n): " ENABLE_MSR
+echo "========================================="
+echo "  MSR Mod Configuration"
+echo "========================================="
+echo ""
+echo "What is MSR mod?"
+echo "  MSR (Model-Specific Register) mod optimizes CPU cache"
+echo "  settings specifically for RandomX mining."
+echo ""
+echo "Performance:"
+echo "  ✓ Additional 5-10% hashrate boost for RandomX"
+echo "  ✓ Works alongside huge pages (not instead of)"
+echo ""
+echo "Requirements:"
+echo "  • Requires root access to modify CPU registers"
+echo "  • Only affects mining, not other applications"
+echo ""
+echo "Recommended for:"
+echo "  ✓ Dedicated mining rigs"
+echo "  ✓ Part-time miners (generally safe)"
+echo ""
+read -p "Enable MSR mod? (y/n): " ENABLE_MSR
 
 if [[ "$ENABLE_MSR" =~ ^[Yy]$ ]]; then
     echo ""
@@ -244,17 +399,24 @@ echo "  Thread Configuration"
 echo "========================================="
 echo ""
 CPU_THREADS=$(nproc)
-echo "Detected $CPU_THREADS CPU threads"
+CPU_MODEL=$(lscpu | grep 'Model name' | cut -d: -f2 | xargs)
+echo "CPU Detected: $CPU_MODEL"
+echo "Available CPU threads: $CPU_THREADS"
 echo ""
-echo "Options:"
-echo "  • Auto (recommended) - XMRig optimizes"
-echo "  • All threads ($CPU_THREADS) - Maximum hashrate"
-echo "  • Reduced (e.g., $(($CPU_THREADS - 2))) - Leave headroom for system"
+echo "Recommended configurations:"
+echo "  • Auto (default) - XMRig will test and optimize automatically"
+echo "  • All threads ($CPU_THREADS) - Maximum hashrate (100% CPU usage)"
+echo "  • Reduced threads (e.g., $(($CPU_THREADS - 2))) - Leaves headroom for other tasks"
 echo ""
-read -p "Number of threads (or press Enter for auto): " THREADS
+echo "Auto-detection will likely select: ~$CPU_THREADS threads for mining"
+echo ""
+echo "For dedicated mining rigs: Use Auto or All threads"
+echo "For desktop/laptop (multi-use): Use reduced threads (e.g., $(($CPU_THREADS - 2)))"
+echo ""
+read -p "Number of threads (press Enter for Auto, or specify number): " THREADS
 if [ -z "$THREADS" ]; then
     THREADS_CONFIG="null"
-    echo "✓ Auto-detection enabled"
+    echo "✓ Auto-detection enabled - XMRig will optimize on first run"
 else
     THREADS_CONFIG="$THREADS"
     echo "✓ Using $THREADS threads"
